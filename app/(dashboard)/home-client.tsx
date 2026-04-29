@@ -1,6 +1,6 @@
 "use client"
 
-import { motion } from "framer-motion"
+import { motion, type Variants } from "framer-motion"
 import {
   TrendingUp,
   FolderKanban,
@@ -18,16 +18,19 @@ import { Separator } from "@/components/ui/separator"
 
 /* ── Animation helpers ───────────────────────────────────────────────────── */
 
-const fadeUp = {
+const EASE_EXPO_OUT = [0.22, 1, 0.36, 1] as [number, number, number, number]
+
+const fadeUp: Variants = {
   hidden: { opacity: 0, y: 16 },
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: i * 0.07, duration: 0.4, ease: [0.22, 1, 0.36, 1] },
+    transition: { delay: i * 0.07, duration: 0.4, ease: EASE_EXPO_OUT },
   }),
 }
 
-const stagger = {
+const stagger: Variants = {
+  hidden: {},
   visible: { transition: { staggerChildren: 0.07 } },
 }
 

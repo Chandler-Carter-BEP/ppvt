@@ -3,8 +3,10 @@ import Resend from "next-auth/providers/resend"
 import { DrizzleAdapter } from "@auth/drizzle-adapter"
 import { db } from "@/lib/db"
 import { users, accounts, sessions, verificationTokens } from "@/lib/db/schema"
+import { authConfig } from "./auth.config"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  ...authConfig,
   adapter: DrizzleAdapter(db, {
     usersTable: users,
     accountsTable: accounts,
@@ -17,13 +19,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       from: process.env.AUTH_EMAIL_FROM ?? "PPVT <noreply@resend.dev>",
     }),
   ],
-  // JWT sessions so the proxy doesn't hit the DB on every request
   session: { strategy: "jwt" },
-  pages: {
-    signIn: "/login",
-    verifyRequest: "/login/verify",
-  },
   callbacks: {
+    ...authConfig.callbacks,
     async jwt({ token, user }) {
       if (user) {
         token.role = (user as { role?: string }).role ?? "pm"

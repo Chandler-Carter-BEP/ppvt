@@ -1,15 +1,9 @@
-import { auth } from "@/lib/auth"
-import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
+import NextAuth from "next-auth"
+import { authConfig } from "@/lib/auth.config"
 
-export const proxy = auth((req: NextRequest & { auth: unknown }) => {
-  const isAuthenticated = !!(req as { auth?: unknown }).auth
-  const isAuthRoute = req.nextUrl.pathname.startsWith("/login")
+const { auth } = NextAuth(authConfig)
 
-  if (!isAuthenticated && !isAuthRoute) {
-    return NextResponse.redirect(new URL("/login", req.url))
-  }
-})
+export const proxy = auth
 
 export const config = {
   matcher: [
