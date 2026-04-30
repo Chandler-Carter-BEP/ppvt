@@ -3,7 +3,7 @@
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { projects, metrics, entries } from "@/lib/db/schema"
-import { and, eq, gte, sum } from "drizzle-orm"
+import { and, count, eq, gte, sql, sum } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { buildCheckInItems } from "@/lib/check-ins"
@@ -283,4 +283,175 @@ export async function getProjectAtlassianData(projectId: string) {
   ])
 
   return { jira, confluence }
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
+export async function getDashboardData() {
+  const userId = await requireUser()
+  const yearStart = new Date(new Date().getFullYear(), 0, 1)
+  const twelveMonthsAgo = new Date()
+  twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 11)
+  twelveMonthsAgo.setDate(1)
+  twelveMonthsAgo.setHours(0, 0, 0, 0)
+
+  const [
+    ytdRow,
+    allTimeRow,
+    activeProjects,
+    metricCountRow,
+    entryCountRow,
+    monthlyRows,
+    projectRows,
+    unitRows,
+    recentEntryRows,
+  ] = await Promise.all([
+    // YTD total
+    db
+      .select({ total: sum(entries.value) })
+      .from(entries)
+      .innerJoin(metrics, eq(entries.metricId, metrics.id))
+      .innerJoin(projects, eq(metrics.projectId, projects.id))
+      .where(and(eq(projects.userId, userId), gte(entries.date, yearStart))),
+
+    // All-time total
+    db
+      .select({ total: sum(entries.value) })
+      .from(entries)
+      .innerJoin(metrics, eq(entries.metricId, metrics.id))
+      .innerJoin(projects, eq(metrics.projectId, projects.id))
+      .where(eq(projects.userId, userId)),
+
+    // Active project count
+    db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.userId, userId), eq(projects.status, "active"))),
+
+    // Metric count
+    db
+      .select({ n: count() })
+      .from(metrics)
+      .innerJoin(projects, eq(metrics.projectId, projects.id))
+      .where(eq(projects.userId, userId)),
+
+    // Entry count
+    db
+      .select({ n: count() })
+      .from(entries)
+      .innerJoin(metrics, eq(entries.metricId, metrics.id))
+      .innerJoin(projects, eq(metrics.projectId, projects.id))
+      .where(eq(projects.userId, userId)),
+
+    // Monthly trend — last 12 months
+    db
+      .select({
+        month: sql<string>`TO_CHAR(DATE_TRUNC('month', ${entries.date}), 'YYYY-MM')`,
+        total: sum(entries.value),
+      })
+      .from(entries)
+      .innerJoin(metrics, eq(entries.metricId, metrics.id))
+      .innerJoin(projects, eq(metrics.projectId, projects.id))
+      .where(
+        and(eq(projects.userId, userId), gte(entries.date, twelveMonthsAgo))
+      )
+      .groupBy(sql`DATE_TRUNC('month', ${entries.date})`)
+      .orderBy(sql`DATE_TRUNC('month', ${entries.date})`),
+
+    // Per-project totals
+    db
+      .select({
+        id: projects.id,
+        name: projects.name,
+        total: sum(entries.value),
+        metricCount: count(metrics.id),
+      })
+      .from(projects)
+      .leftJoin(metrics, eq(metrics.projectId, projects.id))
+      .leftJoin(entries, eq(entries.metricId, metrics.id))
+      .where(and(eq(projects.userId, userId), eq(projects.status, "active")))
+      .groupBy(projects.id, projects.name)
+      .orderBy(sql`SUM(${entries.value}) DESC NULLS LAST`),
+
+    // Per-unit totals
+    db
+      .select({
+        unit: metrics.unit,
+        total: sum(entries.value),
+      })
+      .from(entries)
+      .innerJoin(metrics, eq(entries.metricId, metrics.id))
+      .innerJoin(projects, eq(metrics.projectId, projects.id))
+      .where(eq(projects.userId, userId))
+      .groupBy(metrics.unit)
+      .orderBy(sql`SUM(${entries.value}) DESC NULLS LAST`),
+
+    // Recent entries (last 10)
+    db
+      .select({
+        entryId: entries.id,
+        value: entries.value,
+        note: entries.note,
+        date: entries.date,
+        unit: metrics.unit,
+        metricName: metrics.name,
+        projectId: projects.id,
+        projectName: projects.name,
+      })
+      .from(entries)
+      .innerJoin(metrics, eq(entries.metricId, metrics.id))
+      .innerJoin(projects, eq(metrics.projectId, projects.id))
+      .where(eq(projects.userId, userId))
+      .orderBy(sql`${entries.date} DESC`)
+      .limit(10),
+  ])
+
+  // Build full 12-month series, filling gaps with 0
+  const monthlyMap = new Map(monthlyRows.map((r) => [r.month, Number(r.total ?? 0)]))
+  const monthlyTrend: { month: string; label: string; value: number }[] = []
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date()
+    d.setDate(1)
+    d.setMonth(d.getMonth() - i)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+    const label = d.toLocaleDateString("en-US", { month: "short", year: "2-digit" })
+    monthlyTrend.push({ month: key, label, value: monthlyMap.get(key) ?? 0 })
+  }
+
+  // Check-in summary
+  const projectsWithMetrics = await db.query.projects.findMany({
+    where: and(eq(projects.userId, userId), eq(projects.status, "active")),
+    columns: { id: true, name: true },
+    with: {
+      metrics: {
+        columns: { id: true, name: true, checkInCadenceDays: true, createdAt: true },
+        with: { entries: { columns: { date: true } } },
+      },
+    },
+  })
+  const checkInItems = buildCheckInItems(projectsWithMetrics)
+
+  return {
+    totalYtd: Number(ytdRow[0]?.total ?? 0),
+    totalAllTime: Number(allTimeRow[0]?.total ?? 0),
+    activeProjectCount: activeProjects.length,
+    metricCount: metricCountRow[0]?.n ?? 0,
+    entryCount: entryCountRow[0]?.n ?? 0,
+    overdueCount: checkInItems.filter((i) => i.status === "overdue").length,
+    dueThisWeekCount: checkInItems.filter(
+      (i) => i.status === "due-today" || i.status === "due-soon"
+    ).length,
+    monthlyTrend,
+    projectBreakdown: projectRows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      value: Number(r.total ?? 0),
+      metricCount: Number(r.metricCount ?? 0),
+    })),
+    unitBreakdown: unitRows.map((r) => ({
+      unit: r.unit,
+      value: Number(r.total ?? 0),
+    })),
+    recentEntries: recentEntryRows,
+  }
 }

@@ -6,9 +6,9 @@ import { LayoutDashboard, FolderKanban, BarChart3 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 
 const NAV_ITEMS = [
-  { href: "/", label: "Home", icon: LayoutDashboard },
-  { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/dashboard", label: "Leadership", icon: BarChart3, soon: true },
+  { href: "/", label: "Home", icon: LayoutDashboard, soon: false },
+  { href: "/projects", label: "Projects", icon: FolderKanban, soon: false },
+  { href: "/dashboard", label: "Leadership", icon: BarChart3, soon: false },
 ]
 
 export function NavLinks() {
