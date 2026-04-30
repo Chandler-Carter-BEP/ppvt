@@ -1,11 +1,13 @@
 import type { AdapterAccountType } from "@auth/core/adapters"
 import {
+  doublePrecision,
   integer,
   pgTable,
   primaryKey,
   text,
   timestamp,
 } from "drizzle-orm/pg-core"
+import { relations } from "drizzle-orm"
 
 // ── Auth tables (Auth.js / next-auth v5 compatible) ─────────────────────────
 
@@ -63,7 +65,80 @@ export const verificationTokens = pgTable(
   (vt) => [primaryKey({ columns: [vt.identifier, vt.token] })]
 )
 
+// ── PPVT domain tables ───────────────────────────────────────────────────────
+
+export const projects = pgTable("project", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  jiraUrl: text("jira_url"),
+  confluenceUrl: text("confluence_url"),
+  status: text("status", { enum: ["active", "archived"] })
+    .default("active")
+    .notNull(),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+})
+
+export const metrics = pgTable("metric", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  unit: text("unit").notNull(),
+  target: text("target"),
+  checkInCadenceDays: integer("check_in_cadence_days"),
+  description: text("description"),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+})
+
+export const entries = pgTable("entry", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  metricId: text("metric_id")
+    .notNull()
+    .references(() => metrics.id, { onDelete: "cascade" }),
+  value: doublePrecision("value").notNull(),
+  note: text("note"),
+  date: timestamp("date", { mode: "date" }).notNull(),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+})
+
+// ── Relations ────────────────────────────────────────────────────────────────
+
+export const usersRelations = relations(users, ({ many }) => ({
+  projects: many(projects),
+}))
+
+export const projectsRelations = relations(projects, ({ one, many }) => ({
+  user: one(users, { fields: [projects.userId], references: [users.id] }),
+  metrics: many(metrics),
+}))
+
+export const metricsRelations = relations(metrics, ({ one, many }) => ({
+  project: one(projects, { fields: [metrics.projectId], references: [projects.id] }),
+  entries: many(entries),
+}))
+
+export const entriesRelations = relations(entries, ({ one }) => ({
+  metric: one(metrics, { fields: [entries.metricId], references: [metrics.id] }),
+}))
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect
 export type NewUser = typeof users.$inferInsert
+export type Project = typeof projects.$inferSelect
+export type NewProject = typeof projects.$inferInsert
+export type Metric = typeof metrics.$inferSelect
+export type NewMetric = typeof metrics.$inferInsert
+export type Entry = typeof entries.$inferSelect
+export type NewEntry = typeof entries.$inferInsert

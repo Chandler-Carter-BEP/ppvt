@@ -8,13 +8,19 @@ import {
   AlertCircle,
   Plus,
   ArrowUpRight,
-  Clock,
-  CheckCircle2,
+  ExternalLink,
   Sparkles,
+  CheckCircle2,
+  Clock,
 } from "lucide-react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { RegisterProjectDialog } from "@/components/register-project-dialog"
+import type { getProjects } from "@/lib/actions"
+
+type Projects = Awaited<ReturnType<typeof getProjects>>
 
 /* ── Animation helpers ───────────────────────────────────────────────────── */
 
@@ -59,7 +65,6 @@ function StatCard({ label, value, sub, icon: Icon, accent = "primary", index }: 
       variants={fadeUp}
       className="group relative overflow-hidden rounded-2xl border border-border bg-card p-5 transition-all hover:border-border/80 hover:shadow-lg hover:shadow-black/20"
     >
-      {/* Subtle gradient shimmer on hover */}
       <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent" />
       </div>
@@ -83,6 +88,54 @@ function StatCard({ label, value, sub, icon: Icon, accent = "primary", index }: 
   )
 }
 
+/* ── Project card ────────────────────────────────────────────────────────── */
+
+function ProjectCard({ project, index }: { project: Projects[number]; index: number }) {
+  return (
+    <motion.div custom={index + 4} variants={fadeUp}>
+      <Link
+        href={`/projects/${project.id}`}
+        className="group flex items-start gap-4 rounded-xl border border-border bg-card p-4 transition-all hover:border-border/80 hover:shadow-md hover:shadow-black/20"
+      >
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+          <FolderKanban className="h-4 w-4 text-primary" strokeWidth={1.5} />
+        </div>
+
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex items-center gap-2">
+            <p className="truncate text-sm font-semibold text-foreground">
+              {project.name}
+            </p>
+            <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/30 transition-all group-hover:text-muted-foreground/60" />
+          </div>
+          {project.description && (
+            <p className="truncate text-xs text-muted-foreground">
+              {project.description}
+            </p>
+          )}
+          <div className="flex items-center gap-3 pt-0.5">
+            <span className="text-[11px] text-muted-foreground/60">
+              {project.metricCount} metric{project.metricCount !== 1 ? "s" : ""}
+            </span>
+            {project.jiraUrl && (
+              <span className="flex items-center gap-1 text-[11px] text-muted-foreground/40">
+                <ExternalLink className="h-2.5 w-2.5" />
+                Jira
+              </span>
+            )}
+            {project.confluenceUrl && (
+              <span className="flex items-center gap-1 text-[11px] text-muted-foreground/40">
+                <ExternalLink className="h-2.5 w-2.5" />
+                Confluence
+              </span>
+            )}
+          </div>
+        </div>
+      </Link>
+    </motion.div>
+  )
+}
+
 /* ── Empty projects list ─────────────────────────────────────────────────── */
 
 function EmptyProjectsList() {
@@ -93,7 +146,6 @@ function EmptyProjectsList() {
       className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 px-8 py-16 text-center"
     >
       <div className="relative mb-5">
-        {/* Background glow */}
         <div className="absolute inset-0 scale-150 rounded-full bg-primary/10 blur-2xl" />
         <div className="relative rounded-2xl border border-border bg-card p-5">
           <div className="rounded-xl bg-primary/10 p-3">
@@ -102,118 +154,18 @@ function EmptyProjectsList() {
         </div>
       </div>
 
-      <h3 className="text-base font-semibold text-foreground">
-        No projects yet
-      </h3>
+      <h3 className="text-base font-semibold text-foreground">No projects yet</h3>
       <p className="mt-1.5 max-w-xs text-sm text-muted-foreground">
-        Register a handed-off project to start tracking its ongoing value.
-        Jira and Confluence data will pull in automatically.
+        Register a handed-off project to start tracking its ongoing value. Jira and
+        Confluence data will pull in automatically.
       </p>
-
-      <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row">
-        <Button size="sm" className="gap-2 font-medium" disabled>
-          <Plus className="h-4 w-4" />
-          Register project
-          <Badge variant="secondary" className="ml-0.5 rounded px-1 py-0 text-[10px]">
-            M2
-          </Badge>
-        </Button>
-        <p className="text-xs text-muted-foreground">Coming in the next milestone</p>
-      </div>
-    </motion.div>
-  )
-}
-
-/* ── Check-in preview panel ──────────────────────────────────────────────── */
-
-function CheckInPreview() {
-  const items = [
-    {
-      label: "Procurement AI — Cost savings",
-      due: "Due today",
-      status: "overdue",
-    },
-    {
-      label: "Invoice OCR — Dev hours saved",
-      due: "Due in 3 days",
-      status: "due-soon",
-    },
-    {
-      label: "Contract AI — Revenue impact",
-      due: "Due in 8 days",
-      status: "scheduled",
-    },
-  ]
-
-  const statusConfig = {
-    overdue: {
-      dot: "bg-[var(--value-overdue)]",
-      badge: "text-[var(--value-overdue)] bg-[var(--value-overdue)]/10",
-    },
-    "due-soon": {
-      dot: "bg-[var(--value-warning)]",
-      badge: "text-[var(--value-warning)] bg-[var(--value-warning)]/10",
-    },
-    scheduled: {
-      dot: "bg-muted-foreground/30",
-      badge: "text-muted-foreground bg-muted/50",
-    },
-  }
-
-  return (
-    <motion.div
-      custom={5}
-      variants={fadeUp}
-      className="rounded-2xl border border-border bg-card overflow-hidden"
-    >
-      <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
-        <div className="flex items-center gap-2">
-          <CalendarClock className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Upcoming check-ins</span>
-        </div>
-        <Badge variant="secondary" className="rounded px-1.5 text-[10px]">
-          Preview
-        </Badge>
-      </div>
-
-      <div className="divide-y divide-border">
-        {items.map((item) => {
-          const config = statusConfig[item.status as keyof typeof statusConfig]
-          return (
-            <div
-              key={item.label}
-              className="flex items-center gap-3 px-5 py-3 opacity-40"
-            >
-              <span
-                className={`mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full ${config.dot}`}
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium text-foreground">
-                  {item.label}
-                </p>
-              </div>
-              <span
-                className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${config.badge}`}
-              >
-                {item.due}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-
-      <div className="border-t border-border px-5 py-3">
-        <p className="text-[11px] text-muted-foreground/50">
-          Check-ins appear here once you register projects and define metrics.
-        </p>
-      </div>
     </motion.div>
   )
 }
 
 /* ── Getting started checklist ───────────────────────────────────────────── */
 
-function GettingStarted() {
+function GettingStarted({ hasProjects }: { hasProjects: boolean }) {
   const steps = [
     {
       icon: CheckCircle2,
@@ -225,22 +177,19 @@ function GettingStarted() {
       icon: FolderKanban,
       label: "Register a project",
       desc: "Add a handed-off project, link its Jira issue and Confluence charter.",
-      done: false,
-      milestone: "M2",
+      done: hasProjects,
     },
     {
       icon: TrendingUp,
       label: "Define value metrics",
       desc: "Name the metrics you're tracking — revenue, cost savings, time saved.",
       done: false,
-      milestone: "M2",
     },
     {
       icon: Clock,
       label: "Log your first entry",
       desc: "Record a realized value with evidence. Set a check-in cadence.",
       done: false,
-      milestone: "M2",
     },
     {
       icon: Sparkles,
@@ -316,7 +265,20 @@ function GettingStarted() {
 
 /* ── Page ────────────────────────────────────────────────────────────────── */
 
-export function HomeClient({ userName }: { userName: string }) {
+interface HomeClientProps {
+  userName: string
+  projects: Projects
+  portfolioYtd: number
+}
+
+function formatYtd(value: number): string {
+  if (value === 0) return "--"
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`
+  return `$${value.toFixed(0)}`
+}
+
+export function HomeClient({ userName, projects, portfolioYtd }: HomeClientProps) {
   const hour = new Date().getHours()
   const greeting =
     hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
@@ -324,15 +286,15 @@ export function HomeClient({ userName }: { userName: string }) {
   const stats = [
     {
       label: "Portfolio YTD",
-      value: "--",
-      sub: "No entries yet",
+      value: formatYtd(portfolioYtd),
+      sub: portfolioYtd === 0 ? "No entries yet" : "Realized value this year",
       icon: TrendingUp,
       accent: "positive" as const,
     },
     {
       label: "Active projects",
-      value: "0",
-      sub: "Register your first",
+      value: String(projects.length),
+      sub: projects.length === 0 ? "Register your first" : `${projects.length} tracked`,
       icon: FolderKanban,
       accent: "primary" as const,
     },
@@ -371,7 +333,7 @@ export function HomeClient({ userName }: { userName: string }) {
       </div>
 
       <div className="px-8 py-6 space-y-6">
-        {/* Stat cards row */}
+        {/* Stat cards */}
         <motion.div
           initial="hidden"
           animate="visible"
@@ -385,7 +347,7 @@ export function HomeClient({ userName }: { userName: string }) {
 
         <Separator className="opacity-30" />
 
-        {/* Two-column layout: projects list + right panel */}
+        {/* Two-column layout */}
         <motion.div
           initial="hidden"
           animate="visible"
@@ -405,19 +367,28 @@ export function HomeClient({ userName }: { userName: string }) {
                   Handed-off projects you're tracking
                 </p>
               </div>
-              <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs" disabled>
-                <Plus className="h-3.5 w-3.5" />
-                Register project
-              </Button>
+              <RegisterProjectDialog>
+                <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs">
+                  <Plus className="h-3.5 w-3.5" />
+                  Register project
+                </Button>
+              </RegisterProjectDialog>
             </motion.div>
 
-            <EmptyProjectsList />
+            {projects.length === 0 ? (
+              <EmptyProjectsList />
+            ) : (
+              <div className="space-y-2">
+                {projects.map((project, i) => (
+                  <ProjectCard key={project.id} project={project} index={i} />
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Right: check-ins + getting started */}
+          {/* Right: getting started */}
           <div className="space-y-4">
-            <CheckInPreview />
-            <GettingStarted />
+            <GettingStarted hasProjects={projects.length > 0} />
           </div>
         </motion.div>
       </div>
