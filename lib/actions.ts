@@ -7,6 +7,12 @@ import { and, eq, gte, sum } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { buildCheckInItems } from "@/lib/check-ins"
+import {
+  fetchJiraIssue,
+  fetchConfluencePage,
+  testAtlassianConnection,
+} from "@/lib/atlassian"
+import { atlassianConfigs } from "@/lib/db/schema"
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -196,4 +202,85 @@ export async function getProjectDetail(id: string) {
   })
 
   return project ?? null
+}
+
+// ── Atlassian ─────────────────────────────────────────────────────────────────
+
+const atlassianConfigSchema = z.object({
+  baseUrl: z.string().min(1).max(200),
+  accountEmail: z.string().email(),
+  apiToken: z.string().min(1),
+})
+
+export async function saveAtlassianConfig(
+  input: z.infer<typeof atlassianConfigSchema>
+) {
+  const userId = await requireUser()
+  const data = atlassianConfigSchema.parse(input)
+
+  await db
+    .insert(atlassianConfigs)
+    .values({ userId, ...data })
+    .onConflictDoUpdate({
+      target: atlassianConfigs.userId,
+      set: {
+        baseUrl: data.baseUrl,
+        accountEmail: data.accountEmail,
+        apiToken: data.apiToken,
+        updatedAt: new Date(),
+      },
+    })
+
+  revalidatePath("/settings")
+}
+
+export async function getAtlassianConfig() {
+  const userId = await requireUser()
+  const row = await db.query.atlassianConfigs.findFirst({
+    where: eq(atlassianConfigs.userId, userId),
+  })
+  // Never expose the raw token to the client
+  if (!row) return null
+  return {
+    baseUrl: row.baseUrl,
+    accountEmail: row.accountEmail,
+    hasToken: true,
+    updatedAt: row.updatedAt,
+  }
+}
+
+export async function testAtlassianConfigConnection() {
+  const userId = await requireUser()
+  const row = await db.query.atlassianConfigs.findFirst({
+    where: eq(atlassianConfigs.userId, userId),
+  })
+  if (!row) return { ok: false, error: "No Atlassian config saved." }
+  return testAtlassianConnection(row.baseUrl, row.accountEmail, row.apiToken)
+}
+
+export async function getProjectAtlassianData(projectId: string) {
+  const userId = await requireUser()
+
+  const [project, config] = await Promise.all([
+    db.query.projects.findFirst({
+      where: and(eq(projects.id, projectId), eq(projects.userId, userId)),
+      columns: { jiraUrl: true, confluenceUrl: true },
+    }),
+    db.query.atlassianConfigs.findFirst({
+      where: eq(atlassianConfigs.userId, userId),
+    }),
+  ])
+
+  if (!project || !config) return { jira: null, confluence: null }
+
+  const [jira, confluence] = await Promise.all([
+    project.jiraUrl
+      ? fetchJiraIssue(config.baseUrl, config.accountEmail, config.apiToken, project.jiraUrl)
+      : Promise.resolve(null),
+    project.confluenceUrl
+      ? fetchConfluencePage(config.baseUrl, config.accountEmail, config.apiToken, project.confluenceUrl)
+      : Promise.resolve(null),
+  ])
+
+  return { jira, confluence }
 }

@@ -231,7 +231,13 @@ function MetricCard({ metric, index }: { metric: MetricWithEntries; index: numbe
 
 /* ── Page ────────────────────────────────────────────────────────────────── */
 
-export function ProjectClient({ project }: { project: Project }) {
+export function ProjectClient({
+  project,
+  atlassianSlot,
+}: {
+  project: Project
+  atlassianSlot?: React.ReactNode
+}) {
   return (
     <div className="min-h-full bg-background bg-noise">
       {/* Header */}
@@ -304,6 +310,11 @@ export function ProjectClient({ project }: { project: Project }) {
           </div>
         </motion.div>
       </div>
+
+      {/* Atlassian panels (streamed) */}
+      {atlassianSlot && (
+        <div className="px-8 pt-6">{atlassianSlot}</div>
+      )}
 
       {/* Metrics section */}
       <div className="px-8 py-6">

@@ -67,6 +67,22 @@ export const verificationTokens = pgTable(
 
 // ── PPVT domain tables ───────────────────────────────────────────────────────
 
+export const atlassianConfigs = pgTable("atlassian_config", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  userId: text("user_id")
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: "cascade" }),
+  baseUrl: text("base_url").notNull(),
+  accountEmail: text("account_email").notNull(),
+  // TODO: encrypt at rest before production deployment
+  apiToken: text("api_token").notNull(),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+})
+
 export const projects = pgTable("project", {
   id: text("id")
     .primaryKey()
@@ -114,8 +130,12 @@ export const entries = pgTable("entry", {
 
 // ── Relations ────────────────────────────────────────────────────────────────
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ many, one }) => ({
   projects: many(projects),
+  atlassianConfig: one(atlassianConfigs, {
+    fields: [users.id],
+    references: [atlassianConfigs.userId],
+  }),
 }))
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
@@ -134,6 +154,8 @@ export const entriesRelations = relations(entries, ({ one }) => ({
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+export type AtlassianConfig = typeof atlassianConfigs.$inferSelect
+export type NewAtlassianConfig = typeof atlassianConfigs.$inferInsert
 export type User = typeof users.$inferSelect
 export type NewUser = typeof users.$inferInsert
 export type Project = typeof projects.$inferSelect
