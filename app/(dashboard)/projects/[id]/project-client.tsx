@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { AddMetricDialog } from "@/components/add-metric-dialog"
 import { LogEntryDialog } from "@/components/log-entry-dialog"
+import { getNextDueDate, getCheckInStatus, getDaysLabel } from "@/lib/check-ins"
 import type { getProjectDetail } from "@/lib/actions"
 
 type Project = NonNullable<Awaited<ReturnType<typeof getProjectDetail>>>
@@ -176,25 +177,32 @@ function MetricCard({ metric, index }: { metric: MetricWithEntries; index: numbe
             </div>
           </div>
         )}
-        {metric.checkInCadenceDays && (
+        {metric.checkInCadenceDays && (() => {
+          const lastDate = metric.entries.length > 0
+            ? metric.entries.reduce((l, e) => e.date > l ? e.date : l, metric.entries[0].date)
+            : null
+          const dueDate = getNextDueDate(metric, lastDate)
+          const status = dueDate ? getCheckInStatus(dueDate, new Date()) : null
+          const todayMs = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime()
+          const dueDayMs = dueDate ? new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate()).getTime() : 0
+          const daysUntil = dueDate ? Math.round((dueDayMs - todayMs) / 86400000) : 0
+          const statusColor = status === "overdue" || status === "due-today"
+            ? "text-[var(--value-overdue)]"
+            : status === "due-soon"
+            ? "text-[var(--value-warning)]"
+            : "text-foreground"
+          return (
           <div className="flex items-center gap-1.5">
             <CalendarClock className="h-3 w-3 text-muted-foreground/40" />
             <div>
-              <p className="text-muted-foreground/60">Cadence</p>
-              <p className="font-semibold text-foreground mt-0.5">
-                {metric.checkInCadenceDays === 7
-                  ? "Weekly"
-                  : metric.checkInCadenceDays === 14
-                  ? "Bi-weekly"
-                  : metric.checkInCadenceDays === 30
-                  ? "Monthly"
-                  : metric.checkInCadenceDays === 90
-                  ? "Quarterly"
-                  : `Every ${metric.checkInCadenceDays}d`}
+              <p className="text-muted-foreground/60">Next check-in</p>
+              <p className={`font-semibold mt-0.5 ${statusColor}`}>
+                {status ? getDaysLabel(status, daysUntil) : "—"}
               </p>
             </div>
           </div>
-        )}
+          )
+        })()}
         <div className="ml-auto text-muted-foreground/50">
           {metric.entries.length} entr{metric.entries.length !== 1 ? "ies" : "y"}
         </div>

@@ -18,9 +18,11 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { RegisterProjectDialog } from "@/components/register-project-dialog"
-import type { getProjects } from "@/lib/actions"
+import { getDaysLabel } from "@/lib/check-ins"
+import type { getProjects, getCheckInSummary } from "@/lib/actions"
 
 type Projects = Awaited<ReturnType<typeof getProjects>>
+type CheckIns = Awaited<ReturnType<typeof getCheckInSummary>>
 
 /* ── Animation helpers ───────────────────────────────────────────────────── */
 
@@ -42,15 +44,6 @@ const stagger: Variants = {
 
 /* ── Stat card ───────────────────────────────────────────────────────────── */
 
-interface StatCardProps {
-  label: string
-  value: string
-  sub?: string
-  icon: React.ElementType
-  accent?: "primary" | "positive" | "warning" | "overdue"
-  index: number
-}
-
 const accentClasses = {
   primary: "bg-primary/10 text-primary",
   positive: "bg-[var(--value-positive)]/10 text-[var(--value-positive)]",
@@ -58,7 +51,21 @@ const accentClasses = {
   overdue: "bg-[var(--value-overdue)]/10 text-[var(--value-overdue)]",
 }
 
-function StatCard({ label, value, sub, icon: Icon, accent = "primary", index }: StatCardProps) {
+function StatCard({
+  label,
+  value,
+  sub,
+  icon: Icon,
+  accent = "primary",
+  index,
+}: {
+  label: string
+  value: string
+  sub?: string
+  icon: React.ElementType
+  accent?: keyof typeof accentClasses
+  index: number
+}) {
   return (
     <motion.div
       custom={index}
@@ -68,7 +75,6 @@ function StatCard({ label, value, sub, icon: Icon, accent = "primary", index }: 
       <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent" />
       </div>
-
       <div className="relative space-y-4">
         <div className="flex items-start justify-between">
           <div className={`rounded-lg p-2 ${accentClasses[accent]}`}>
@@ -100,18 +106,13 @@ function ProjectCard({ project, index }: { project: Projects[number]; index: num
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
           <FolderKanban className="h-4 w-4 text-primary" strokeWidth={1.5} />
         </div>
-
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex items-center gap-2">
-            <p className="truncate text-sm font-semibold text-foreground">
-              {project.name}
-            </p>
+            <p className="truncate text-sm font-semibold text-foreground">{project.name}</p>
             <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/30 transition-all group-hover:text-muted-foreground/60" />
           </div>
           {project.description && (
-            <p className="truncate text-xs text-muted-foreground">
-              {project.description}
-            </p>
+            <p className="truncate text-xs text-muted-foreground">{project.description}</p>
           )}
           <div className="flex items-center gap-3 pt-0.5">
             <span className="text-[11px] text-muted-foreground/60">
@@ -153,12 +154,92 @@ function EmptyProjectsList() {
           </div>
         </div>
       </div>
-
       <h3 className="text-base font-semibold text-foreground">No projects yet</h3>
       <p className="mt-1.5 max-w-xs text-sm text-muted-foreground">
-        Register a handed-off project to start tracking its ongoing value. Jira and
-        Confluence data will pull in automatically.
+        Register a handed-off project to start tracking its ongoing value.
       </p>
+    </motion.div>
+  )
+}
+
+/* ── Check-ins panel ─────────────────────────────────────────────────────── */
+
+const statusStyles = {
+  overdue: {
+    dot: "bg-[var(--value-overdue)]",
+    badge: "text-[var(--value-overdue)] bg-[var(--value-overdue)]/10",
+  },
+  "due-today": {
+    dot: "bg-[var(--value-overdue)]",
+    badge: "text-[var(--value-overdue)] bg-[var(--value-overdue)]/10",
+  },
+  "due-soon": {
+    dot: "bg-[var(--value-warning)]",
+    badge: "text-[var(--value-warning)] bg-[var(--value-warning)]/10",
+  },
+  scheduled: {
+    dot: "bg-muted-foreground/30",
+    badge: "text-muted-foreground bg-muted/50",
+  },
+}
+
+function CheckInsPanel({ checkIns }: { checkIns: CheckIns }) {
+  const { items } = checkIns
+  const hasItems = items.length > 0
+
+  return (
+    <motion.div
+      custom={5}
+      variants={fadeUp}
+      className="rounded-2xl border border-border bg-card overflow-hidden"
+    >
+      <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
+        <div className="flex items-center gap-2">
+          <CalendarClock className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Upcoming check-ins</span>
+        </div>
+        {hasItems && (
+          <span className="text-[11px] text-muted-foreground/50">
+            {items.length} metric{items.length !== 1 ? "s" : ""}
+          </span>
+        )}
+      </div>
+
+      {hasItems ? (
+        <div className="divide-y divide-border">
+          {items.map((item) => {
+            const style = statusStyles[item.status]
+            return (
+              <Link
+                key={item.metricId}
+                href={`/projects/${item.projectId}`}
+                className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-muted/30"
+              >
+                <span className={`mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full ${style.dot}`} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium text-foreground">
+                    {item.metricName}
+                  </p>
+                  <p className="truncate text-[10px] text-muted-foreground/50">
+                    {item.projectName}
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${style.badge}`}
+                >
+                  {getDaysLabel(item.status, item.daysUntilDue)}
+                </span>
+              </Link>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="px-5 py-8 text-center">
+          <p className="text-xs text-muted-foreground/50">
+            Check-ins appear here once you define metrics with a cadence.
+          </p>
+        </div>
+      )}
     </motion.div>
   )
 }
@@ -167,12 +248,7 @@ function EmptyProjectsList() {
 
 function GettingStarted({ hasProjects }: { hasProjects: boolean }) {
   const steps = [
-    {
-      icon: CheckCircle2,
-      label: "Sign in",
-      desc: "You're in.",
-      done: true,
-    },
+    { icon: CheckCircle2, label: "Sign in", desc: "You're in.", done: true },
     {
       icon: FolderKanban,
       label: "Register a project",
@@ -210,7 +286,6 @@ function GettingStarted({ hasProjects }: { hasProjects: boolean }) {
         <Sparkles className="h-4 w-4 text-primary" />
         <span className="text-sm font-medium">Getting started</span>
       </div>
-
       <div className="divide-y divide-border">
         {steps.map((step, i) => {
           const Icon = step.icon
@@ -225,9 +300,7 @@ function GettingStarted({ hasProjects }: { hasProjects: boolean }) {
               >
                 <Icon
                   className={`h-3.5 w-3.5 ${
-                    step.done
-                      ? "text-[var(--value-positive)]"
-                      : "text-muted-foreground/40"
+                    step.done ? "text-[var(--value-positive)]" : "text-muted-foreground/40"
                   }`}
                 />
               </div>
@@ -235,25 +308,18 @@ function GettingStarted({ hasProjects }: { hasProjects: boolean }) {
                 <div className="flex items-center gap-2">
                   <p
                     className={`text-sm font-medium ${
-                      step.done
-                        ? "text-muted-foreground line-through"
-                        : "text-foreground"
+                      step.done ? "text-muted-foreground line-through" : "text-foreground"
                     }`}
                   >
                     {step.label}
                   </p>
                   {step.milestone && (
-                    <Badge
-                      variant="secondary"
-                      className="rounded px-1 py-0 text-[10px] opacity-50"
-                    >
+                    <Badge variant="secondary" className="rounded px-1 py-0 text-[10px] opacity-50">
                       {step.milestone}
                     </Badge>
                   )}
                 </div>
-                <p className="mt-0.5 text-xs text-muted-foreground/60">
-                  {step.desc}
-                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground/60">{step.desc}</p>
               </div>
             </div>
           )
@@ -265,12 +331,6 @@ function GettingStarted({ hasProjects }: { hasProjects: boolean }) {
 
 /* ── Page ────────────────────────────────────────────────────────────────── */
 
-interface HomeClientProps {
-  userName: string
-  projects: Projects
-  portfolioYtd: number
-}
-
 function formatYtd(value: number): string {
   if (value === 0) return "--"
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`
@@ -278,7 +338,17 @@ function formatYtd(value: number): string {
   return `$${value.toFixed(0)}`
 }
 
-export function HomeClient({ userName, projects, portfolioYtd }: HomeClientProps) {
+export function HomeClient({
+  userName,
+  projects,
+  portfolioYtd,
+  checkIns,
+}: {
+  userName: string
+  projects: Projects
+  portfolioYtd: number
+  checkIns: CheckIns
+}) {
   const hour = new Date().getHours()
   const greeting =
     hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
@@ -300,14 +370,14 @@ export function HomeClient({ userName, projects, portfolioYtd }: HomeClientProps
     },
     {
       label: "Due this week",
-      value: "0",
+      value: String(checkIns.dueThisWeekCount),
       sub: "Check-ins",
       icon: CalendarClock,
       accent: "warning" as const,
     },
     {
       label: "Overdue",
-      value: "0",
+      value: String(checkIns.overdueCount),
       sub: "Check-ins",
       icon: AlertCircle,
       accent: "overdue" as const,
@@ -316,7 +386,6 @@ export function HomeClient({ userName, projects, portfolioYtd }: HomeClientProps
 
   return (
     <div className="min-h-full bg-background bg-noise">
-      {/* Page header */}
       <div className="border-b border-border/50 px-8 py-5">
         <motion.div
           initial={{ opacity: 0, y: -8 }}
@@ -333,7 +402,6 @@ export function HomeClient({ userName, projects, portfolioYtd }: HomeClientProps
       </div>
 
       <div className="px-8 py-6 space-y-6">
-        {/* Stat cards */}
         <motion.div
           initial="hidden"
           animate="visible"
@@ -347,7 +415,6 @@ export function HomeClient({ userName, projects, portfolioYtd }: HomeClientProps
 
         <Separator className="opacity-30" />
 
-        {/* Two-column layout */}
         <motion.div
           initial="hidden"
           animate="visible"
@@ -386,8 +453,9 @@ export function HomeClient({ userName, projects, portfolioYtd }: HomeClientProps
             )}
           </div>
 
-          {/* Right: getting started */}
+          {/* Right: check-ins + getting started */}
           <div className="space-y-4">
+            <CheckInsPanel checkIns={checkIns} />
             <GettingStarted hasProjects={projects.length > 0} />
           </div>
         </motion.div>

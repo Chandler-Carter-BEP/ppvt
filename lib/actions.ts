@@ -3,9 +3,10 @@
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { projects, metrics, entries } from "@/lib/db/schema"
-import { and, eq, gte, inArray, sum } from "drizzle-orm"
+import { and, eq, gte, sum } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
+import { buildCheckInItems } from "@/lib/check-ins"
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -50,11 +51,41 @@ export async function getProjects() {
 
   const rows = await db.query.projects.findMany({
     where: and(eq(projects.userId, userId), eq(projects.status, "active")),
-    with: { metrics: { columns: { id: true } } },
+    with: {
+      metrics: {
+        columns: { id: true, name: true, checkInCadenceDays: true, createdAt: true },
+        with: { entries: { columns: { date: true } } },
+      },
+    },
     orderBy: (p, { desc }) => [desc(p.createdAt)],
   })
 
   return rows.map((p) => ({ ...p, metricCount: p.metrics.length }))
+}
+
+export async function getCheckInSummary() {
+  const userId = await requireUser()
+
+  const rows = await db.query.projects.findMany({
+    where: and(eq(projects.userId, userId), eq(projects.status, "active")),
+    columns: { id: true, name: true },
+    with: {
+      metrics: {
+        columns: { id: true, name: true, checkInCadenceDays: true, createdAt: true },
+        with: { entries: { columns: { date: true } } },
+      },
+    },
+  })
+
+  const items = buildCheckInItems(rows)
+
+  return {
+    items: items.slice(0, 10),
+    overdueCount: items.filter((i) => i.status === "overdue").length,
+    dueThisWeekCount: items.filter(
+      (i) => i.status === "due-today" || i.status === "due-soon"
+    ).length,
+  }
 }
 
 export async function getPortfolioYtd() {
